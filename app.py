@@ -33,7 +33,7 @@ st.title("🌀 FaceVortex Studio")
 st.markdown("<div class='warning-badge'><b>WARNING (18+):</b> This application is strictly restricted to adult users for legal and authorized content only.</div>", unsafe_allow_html=True)
 
 def resize_img(img, max_dim=800):
-    h, w = img.shape[:2]
+    h, w, _ = img.shape
     if max(h, w) > max_dim:
         scale = max_dim / float(max(h, w))
         return cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -53,11 +53,7 @@ def load_models():
     return app, swapper
 
 with st.spinner("⏳ Učitavanje AI motora..."):
-    try:
-        face_app, swapper = load_models()
-    except Exception as e:
-        st.error(f"Greška: {e}")
-        st.stop()
+    face_app, swapper = load_models()
 
 st.markdown("### Select Operating Mode")
 app_mode = st.radio("Mode:", ["1. Single Face Swap", "2. Multi-Face Swap", "3. GIF Face Swap"], label_visibility="collapsed")
@@ -65,15 +61,12 @@ st.markdown("---")
 
 if "Single" in app_mode:
     col1, col2 = st.columns(2)
-    with col1:
-        t_file = st.file_uploader("Upload Target Image", type=["jpg", "jpeg", "png"], key="t_s")
-    with col2:
-        s_file = st.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_s")
+    t_file = col1.file_uploader("Upload Target Image", type=["jpg", "jpeg", "png"], key="t_s")
+    s_file = col2.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_s")
 
     if t_file and s_file:
         img_t = resize_img(cv2.imdecode(np.frombuffer(t_file.getvalue(), np.uint8), cv2.IMREAD_COLOR), 800)
         img_s = resize_img(cv2.imdecode(np.frombuffer(s_file.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
-
         c1, c2 = st.columns(2)
         c1.image(cv2.cvtColor(img_t, cv2.COLOR_BGR2RGB), caption="Target", use_container_width=True)
         c2.image(cv2.cvtColor(img_s, cv2.COLOR_BGR2RGB), caption="Source", use_container_width=True)
@@ -85,9 +78,10 @@ if "Single" in app_mode:
                 if not t_faces or not s_faces:
                     st.error("Lice nije pronađeno na jednoj od slika.")
                 else:
+                    first_src = next(iter(s_faces))
                     res = img_t.copy()
                     for tf in t_faces:
-                        res = swapper.get(res, tf, s_faces, paste_back=True)
+                        res = swapper.get(res, tf, first_src, paste_back=True)
                     final_rgb = cv2.cvtColor(res, cv2.COLOR_BGR2RGB)
                     st.image(final_rgb, caption="Result", use_container_width=True)
                     buf = io.BytesIO()
@@ -112,9 +106,9 @@ elif "Multi" in app_mode:
         if img_m is not None and len(faces_m) > 0:
             for i, f in enumerate(faces_m):
                 st.markdown("<div class='face-row'>", unsafe_allow_html=True)
-                b = f['bbox'].astype(int)
+                x1, y1, x2, y2 = f['bbox'].astype(int).tolist()
                 h, w, _ = img_m.shape
-                crop = img_m[max(0, b-20):min(h, b+20), max(0, b-20):min(w, b+20)]
+                crop = img_m[max(0, y1-20):min(h, y2+20), max(0, x1-20):min(w, x2+20)]
                 sc1, sc2, sc3 = st.columns([1, 0.3, 1.5])
                 if crop.size > 0:
                     sc1.image(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), width=70, caption=f"#{i+1}")
@@ -124,7 +118,7 @@ elif "Multi" in app_mode:
                     ir = resize_img(cv2.imdecode(np.frombuffer(rf.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
                     sf = face_app.get(ir)
                     if sf:
-                        reps[i] = sf
+                        reps[i] = next(iter(sf))
                     else:
                         st.error(f"Nema lica #{i+1}")
                 st.markdown("</div>", unsafe_allow_html=True)
@@ -144,12 +138,10 @@ elif "Multi" in app_mode:
 
 else:
     st.markdown("### 🎞️ GIF Face Swap Mode")
-    st.write("Preporuka: Koristite kraće GIF-ove (do 60 sličica) radi brže obrade na serveru.")
+    st.write("Preporuka: Koristite kraće GIF-ove (do 60 sličica) radi brže obrade.")
     col1, col2 = st.columns(2)
-    with col1:
-        gif_file = st.file_uploader("Upload Target GIF", type=["gif"], key="t_gif")
-    with col2:
-        src_gif_file = st.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_gif")
+    gif_file = col1.file_uploader("Upload Target GIF", type=["gif"], key="t_gif")
+    src_gif_file = col2.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_gif")
 
     if gif_file and src_gif_file:
         c1, c2 = st.columns(2)
@@ -162,10 +154,9 @@ else:
             if not s_faces:
                 st.error("Lice nije pronađeno na izvornoj slici.")
             else:
-                src_face = s_faces
+                src_face = next(iter(s_faces))
                 pil_gif = Image.open(gif_file)
-                frames = []
-                durations = []
+                frames, durations = [], []
                 total_frames = getattr(pil_gif, "n_frames", 1)
                 max_frames = min(total_frames, 80)
                 progress_bar = st.progress(0)
@@ -176,20 +167,20 @@ else:
                         break
                     status_text.text(f"Obrada sličice {idx + 1} od {max_frames}...")
                     durations.append(frame.info.get('duration', 100))
-                    rgb_frame = np.array(frame.convert('RGB'))
-                    bgr_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
-                    bgr_frame = resize_img(bgr_frame, 480)
-                    t_faces = face_app.get(bgr_frame)
-                    for tf in t_faces:
+                    bgr_frame = resize_img(cv2.cvtColor(np.array(frame.convert('RGB')), cv2.COLOR_RGB2BGR), 480)
+                    for tf in face_app.get(bgr_frame):
                         bgr_frame = swapper.get(bgr_frame, tf, src_face, paste_back=True)
-                    final_pil = Image.fromarray(cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB))
-                    frames.append(final_pil)
+                    frames.append(Image.fromarray(cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)))
                     progress_bar.progress((idx + 1) / max_frames)
 
                 status_text.text("Spajanje gotovog GIF-a...")
                 gif_buf = io.BytesIO()
-                frames.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
-                gif_bytes = gif_buf.getvalue()
+                first_frame = next(iter(frames))
+                first_frame.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
                 status_text.empty()
                 st.success("GIF zamena lica uspešno završena!")
-                st.image(gif_bytes, caption="Final GIF Result", use_container_width=True)
+                st.image(gif_buf.getvalue(), caption="Final GIF Result", use_container_width=True)
+                st.download_button("📥 Download Result GIF", gif_buf.getvalue(), "facevortex_result.gif", "image/gif")
+                gc.collect()
+
+st.markdown("<div class='custom-footer'>© 2026 FaceVortex Studio | Created by vilmaacimovic-lab. All rights reserved.</div>", unsafe_allow_html=True)
