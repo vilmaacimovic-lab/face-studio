@@ -17,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Dark Mode dizajn
 st.markdown("""
     <style>
     .stApp {
@@ -80,14 +79,12 @@ st.markdown("""
 st.title("🌀 FaceVortex Studio")
 st.markdown("<div class='warning-badge'><b>WARNING (18+):</b> This application is strictly restricted to adult users for legal and authorized content only.</div>", unsafe_allow_html=True)
 
-# Automatsko preuzimanje modela ako fali
 model_path = "inswapper_128.onnx"
 if not os.path.exists(model_path):
     with st.spinner("Downloading AI face swap model (first time only, please wait)..."):
-       url = "https://huggingface.co"
+        url = "https://huggingface.co"
         urllib.request.urlretrieve(url, model_path)
 
-# Učitavanje AI modela
 @st.cache_resource
 def load_model():
     app = FaceAnalysis(name='buffalo_l')
@@ -97,7 +94,6 @@ def load_model():
 with st.spinner("Initializing AI engine..."):
     face_app = load_model()
 
-# GLAVNI IZBOR REŽIMA RADA
 st.markdown("### Select Operating Mode")
 app_mode = st.radio(
     "Choose your swap mode:",
@@ -107,9 +103,6 @@ app_mode = st.radio(
 
 st.markdown("---")
 
-# ----------------------------------------------------
-# OPCIJA 1: SINGLE FACE SWAP
-# ----------------------------------------------------
 if "Single Face Swap" in app_mode:
     st.markdown("### 👤 Single Face Swap Mode")
     st.write("Upload a target image and a single source face to swap.")
@@ -166,9 +159,6 @@ if "Single Face Swap" in app_mode:
                         mime="image/jpeg"
                     )
 
-# ----------------------------------------------------
-# OPCIJA 2: MULTI-FACE SWAP
-# ----------------------------------------------------
 else:
     st.markdown("### 👥 Multi-Face Swap Mode")
     st.write("Upload a group target image, then match each detected person precisely.")
