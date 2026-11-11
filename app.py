@@ -5,16 +5,19 @@ import insightface
 from insightface.app import FaceAnalysis
 from huggingface_hub import hf_hub_download
 import os
-from PIL import Image
+from PIL import Image, ImageSequence
 import io
 import gc
 
 os.environ["LANG"] = "en_US.UTF-8"
-st.set_page_config(page_title="FaceVortex | AI Studio", page_icon="🌀", layout="centered")
+st.set_page_config(page_title="FaceVortex | AI Studio", page_icon="🌀", layout="centered", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; }
+    header[data-testid="stHeader"] { visibility: hidden; display: none; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
     h1, h2, h3, label, .stMarkdown p { color: #ffffff !important; }
     div[data-testid="stFileUploader"] { background-color: #161b22; border: 1px dashed #30363d; border-radius: 10px; padding: 10px; }
     div[data-testid="stFileUploader"] section { background-color: #161b22 !important; }
@@ -22,6 +25,7 @@ st.markdown("""
     .stButton>button { width: 100%; background: linear-gradient(90deg, #ff4b4b 0%, #ff8c00 100%); color: white !important; font-weight: bold; border-radius: 8px; padding: 0.6rem; border: none; }
     .warning-badge { background-color: #1a1c23; border-left: 4px solid #ff4b4b; padding: 12px 15px; border-radius: 4px; margin-bottom: 20px; font-size: 14px; color: #ff9999 !important; border: 1px solid #2d3139; }
     .face-row { background-color: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px; }
+    .custom-footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid #30363d; color: #8b949e !important; font-size: 13px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -48,7 +52,7 @@ def load_models():
     gc.collect()
     return app, swapper
 
-with st.spinner("⏳ Učitavanje optimizovanog AI motora..."):
+with st.spinner("⏳ Učitavanje AI motora..."):
     try:
         face_app, swapper = load_models()
     except Exception as e:
@@ -56,7 +60,7 @@ with st.spinner("⏳ Učitavanje optimizovanog AI motora..."):
         st.stop()
 
 st.markdown("### Select Operating Mode")
-app_mode = st.radio("Mode:", ["1. Single Face Swap", "2. Multi-Face Swap"], label_visibility="collapsed")
+app_mode = st.radio("Mode:", ["1. Single Face Swap", "2. Multi-Face Swap", "3. GIF Face Swap"], label_visibility="collapsed")
 st.markdown("---")
 
 if "Single" in app_mode:
@@ -83,14 +87,15 @@ if "Single" in app_mode:
                 else:
                     res = img_t.copy()
                     for tf in t_faces:
-                        res = swapper.get(res, tf, s_faces[0], paste_back=True)
+                        res = swapper.get(res, tf, s_faces, paste_back=True)
                     final_rgb = cv2.cvtColor(res, cv2.COLOR_BGR2RGB)
                     st.image(final_rgb, caption="Result", use_container_width=True)
                     buf = io.BytesIO()
                     Image.fromarray(final_rgb).save(buf, format="JPEG", quality=95)
                     st.download_button("📥 Download Result", buf.getvalue(), "result.jpg", "image/jpeg")
                     gc.collect()
-else:
+
+elif "Multi" in app_mode:
     col_l, col_r = st.columns(2)
     reps = {}
     img_m = None
@@ -109,7 +114,7 @@ else:
                 st.markdown("<div class='face-row'>", unsafe_allow_html=True)
                 b = f['bbox'].astype(int)
                 h, w, _ = img_m.shape
-                crop = img_m[max(0, b[1]-20):min(h, b[3]+20), max(0, b[0]-20):min(w, b[2]+20)]
+                crop = img_m[max(0, b-20):min(h, b+20), max(0, b-20):min(w, b+20)]
                 sc1, sc2, sc3 = st.columns([1, 0.3, 1.5])
                 if crop.size > 0:
                     sc1.image(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), width=70, caption=f"#{i+1}")
@@ -119,7 +124,7 @@ else:
                     ir = resize_img(cv2.imdecode(np.frombuffer(rf.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
                     sf = face_app.get(ir)
                     if sf:
-                        reps[i] = sf[0]
+                        reps[i] = sf
                     else:
                         st.error(f"Nema lica #{i+1}")
                 st.markdown("</div>", unsafe_allow_html=True)
@@ -136,3 +141,55 @@ else:
                 Image.fromarray(final_rgb).save(buf, format="JPEG", quality=95)
                 st.download_button("📥 Download Result", buf.getvalue(), "group.jpg", "image/jpeg")
                 gc.collect()
+
+else:
+    st.markdown("### 🎞️ GIF Face Swap Mode")
+    st.write("Preporuka: Koristite kraće GIF-ove (do 60 sličica) radi brže obrade na serveru.")
+    col1, col2 = st.columns(2)
+    with col1:
+        gif_file = st.file_uploader("Upload Target GIF", type=["gif"], key="t_gif")
+    with col2:
+        src_gif_file = st.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_gif")
+
+    if gif_file and src_gif_file:
+        c1, c2 = st.columns(2)
+        c1.image(gif_file, caption="Target GIF", use_container_width=True)
+        img_s_gif = resize_img(cv2.imdecode(np.frombuffer(src_gif_file.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
+        c2.image(cv2.cvtColor(img_s_gif, cv2.COLOR_BGR2RGB), caption="Source Face", use_container_width=True)
+
+        if st.button("🚀 Run GIF Face Swap"):
+            s_faces = face_app.get(img_s_gif)
+            if not s_faces:
+                st.error("Lice nije pronađeno na izvornoj slici.")
+            else:
+                src_face = s_faces
+                pil_gif = Image.open(gif_file)
+                frames = []
+                durations = []
+                total_frames = getattr(pil_gif, "n_frames", 1)
+                max_frames = min(total_frames, 80)
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                for idx, frame in enumerate(ImageSequence.Iterator(pil_gif)):
+                    if idx >= max_frames:
+                        break
+                    status_text.text(f"Obrada sličice {idx + 1} od {max_frames}...")
+                    durations.append(frame.info.get('duration', 100))
+                    rgb_frame = np.array(frame.convert('RGB'))
+                    bgr_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+                    bgr_frame = resize_img(bgr_frame, 480)
+                    t_faces = face_app.get(bgr_frame)
+                    for tf in t_faces:
+                        bgr_frame = swapper.get(bgr_frame, tf, src_face, paste_back=True)
+                    final_pil = Image.fromarray(cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB))
+                    frames.append(final_pil)
+                    progress_bar.progress((idx + 1) / max_frames)
+
+                status_text.text("Spajanje gotovog GIF-a...")
+                gif_buf = io.BytesIO()
+                frames.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
+                gif_bytes = gif_buf.getvalue()
+                status_text.empty()
+                st.success("GIF zamena lica uspešno završena!")
+                st.image(gif_bytes, caption="Final GIF Result", use_container_width=True)
