@@ -4,3 +4,4 @@ numpy
 insightface
 onnxruntime
 Pillow
+huggingface_hub
