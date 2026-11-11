@@ -3,8 +3,8 @@ import cv2
 import numpy as np
 import insightface
 from insightface.app import FaceAnalysis
+from huggingface_hub import hf_hub_download
 import os
-import urllib.request
 from PIL import Image
 import io
 import gc
@@ -35,46 +35,20 @@ def resize_img(img, max_dim=800):
         return cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     return img
 
-model_path = "inswapper_128.onnx"
-
-# Brišemo oštećeni fajl ako je manji od 100 MB
-if os.path.exists(model_path) and os.path.getsize(model_path) < 100_000_000:
-    os.remove(model_path)
-
-if not os.path.exists(model_path):
-    st.warning("⏳ Preuzimanje ispravnog AI modela sa novog servera (oko 550MB, sačekajte 30-ak sekundi)...")
-    urls = [
-        "https://huggingface.co",
-        "https://github.com"
-    ]
-    downloaded = False
-    for u in urls:
-        try:
-            urllib.request.urlretrieve(u, model_path)
-            if os.path.exists(model_path) and os.path.getsize(model_path) > 100_000_000:
-                downloaded = True
-                break
-        except Exception:
-            if os.path.exists(model_path):
-                os.remove(model_path)
-    if downloaded:
-        st.rerun()
-    else:
-        st.error("Nije uspelo automatsko preuzimanje modela sa servera.")
-        st.stop()
-
 @st.cache_resource
 def load_models():
+    model_file = hf_hub_download(repo_id="ezioruan/inswapper_128.onnx", filename="inswapper_128.onnx")
     app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])
     app.prepare(ctx_id=-1, det_size=(320, 320))
-    swapper = insightface.model_zoo.get_model(model_path, providers=['CPUExecutionProvider'])
+    swapper = insightface.model_zoo.get_model(model_file, providers=['CPUExecutionProvider'])
     return app, swapper
 
-try:
-    face_app, swapper = load_models()
-except Exception as e:
-    st.error(f"Greška pri učitavanju AI motora: {e}")
-    st.stop()
+with st.spinner("⏳ Pokretanje AI motora (prvi put traje oko 30 sekundi)..."):
+    try:
+        face_app, swapper = load_models()
+    except Exception as e:
+        st.error(f"Greška: {e}")
+        st.stop()
 
 st.markdown("### Select Operating Mode")
 app_mode = st.radio("Mode:", ["1. Single Face Swap", "2. Multi-Face Swap"], label_visibility="collapsed")
@@ -104,7 +78,7 @@ if "Single" in app_mode:
                 else:
                     res = img_t.copy()
                     for tf in t_faces:
-                        res = swapper.get(res, tf, s_faces[0], paste_back=True)
+                        res = swapper.get(res, tf, s_faces, paste_back=True)
                     final_rgb = cv2.cvtColor(res, cv2.COLOR_BGR2RGB)
                     st.image(final_rgb, caption="Result", use_container_width=True)
                     buf = io.BytesIO()
@@ -130,7 +104,7 @@ else:
                 st.markdown("<div class='face-row'>", unsafe_allow_html=True)
                 b = f['bbox'].astype(int)
                 h, w, _ = img_m.shape
-                crop = img_m[max(0, b[1]-20):min(h, b[3]+20), max(0, b[0]-20):min(w, b[2]+20)]
+                crop = img_m[max(0, b-20):min(h, b+20), max(0, b-20):min(w, b+20)]
                 sc1, sc2, sc3 = st.columns([1, 0.3, 1.5])
                 if crop.size > 0:
                     sc1.image(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), width=70, caption=f"#{i+1}")
@@ -140,7 +114,7 @@ else:
                     ir = resize_img(cv2.imdecode(np.frombuffer(rf.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
                     sf = face_app.get(ir)
                     if sf:
-                        reps[i] = sf[0]
+                        reps[i] = sf
                     else:
                         st.error(f"Nema lica #{i+1}")
                 st.markdown("</div>", unsafe_allow_html=True)
