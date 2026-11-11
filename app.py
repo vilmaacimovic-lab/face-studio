@@ -7,6 +7,7 @@ import os
 import urllib.request
 from PIL import Image
 import io
+import gc
 
 os.environ["LANG"] = "en_US.UTF-8"
 
@@ -79,6 +80,15 @@ st.markdown("""
 st.title("🌀 FaceVortex Studio")
 st.markdown("<div class='warning-badge'><b>WARNING (18+):</b> This application is strictly restricted to adult users for legal and authorized content only.</div>", unsafe_allow_html=True)
 
+# Funkcija za optimizaciju veličine slike da ne prepuni RAM memoriju servera
+def resize_image_if_needed(img, max_dim=1024):
+    h, w = img.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / float(max(h, w))
+        new_w, new_h = int(w * scale), int(h * scale)
+        return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return img
+
 model_path = "inswapper_128.onnx"
 if not os.path.exists(model_path):
     with st.spinner("Downloading AI face swap model (first time only, please wait)..."):
@@ -86,13 +96,14 @@ if not os.path.exists(model_path):
         urllib.request.urlretrieve(url, model_path)
 
 @st.cache_resource
-def load_model():
+def load_models():
     app = FaceAnalysis(name='buffalo_l')
-    app.prepare(ctx_id=-1, det_size=(640, 640))
-    return app
+    app.prepare(ctx_id=-1, det_size=(320, 320))
+    swapper = insightface.model_zoo.get_model(model_path, download=False, download_zip=False)
+    return app, swapper
 
 with st.spinner("Initializing AI engine..."):
-    face_app = load_model()
+    face_app, swapper = load_models()
 
 st.markdown("### Select Operating Mode")
 app_mode = st.radio(
@@ -114,8 +125,11 @@ if "Single Face Swap" in app_mode:
         source_file_s = st.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="source_single")
 
     if target_file_s is not None and source_file_s is not None:
-        img_target = cv2.imdecode(np.frombuffer(target_file_s.read(), np.uint8), cv2.IMREAD_COLOR)
-        img_source = cv2.imdecode(np.frombuffer(source_file_s.read(), np.uint8), cv2.IMREAD_COLOR)
+        img_target = cv2.imdecode(np.frombuffer(target_file_s.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+        img_source = cv2.imdecode(np.frombuffer(source_file_s.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+
+        img_target = resize_image_if_needed(img_target, max_dim=1024)
+        img_source = resize_image_if_needed(img_source, max_dim=800)
 
         pcol1, pcol2 = st.columns(2)
         with pcol1:
@@ -127,7 +141,6 @@ if "Single Face Swap" in app_mode:
 
         if st.button("🚀 Run Single Face Swap"):
             with st.spinner("Processing single face swap..."):
-                swapper = insightface.model_zoo.get_model(model_path, download=False, download_zip=False)
                 t_faces = face_app.get(img_target)
                 s_faces = face_app.get(img_source)
 
@@ -149,7 +162,7 @@ if "Single Face Swap" in app_mode:
 
                     pil_img = Image.fromarray(final_rgb)
                     buf = io.BytesIO()
-                    pil_img.save(buf, format="JPEG")
+                    pil_img.save(buf, format="JPEG", quality=95)
                     byte_im = buf.getvalue()
 
                     st.download_button(
@@ -158,6 +171,7 @@ if "Single Face Swap" in app_mode:
                         file_name="facevortex_single.jpg",
                         mime="image/jpeg"
                     )
+                    gc.collect()
 
 else:
     st.markdown("### 👥 Multi-Face Swap Mode")
@@ -173,7 +187,8 @@ else:
         target_file_m = st.file_uploader("Upload target group image", type=["jpg", "jpeg", "png"], key="target_multi")
         
         if target_file_m is not None:
-            image_target_m = cv2.imdecode(np.frombuffer(target_file_m.read(), np.uint8), cv2.IMREAD_COLOR)
+            image_target_m = cv2.imdecode(np.frombuffer(target_file_m.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+            image_target_m = resize_image_if_needed(image_target_m, max_dim=1024)
             target_faces_m = face_app.get(image_target_m)
             st.image(cv2.cvtColor(image_target_m, cv2.COLOR_BGR2RGB), caption=f"Target (Detected {len(target_faces_m)} faces)", use_container_width=True)
 
@@ -183,12 +198,12 @@ else:
             st.write("Match each detected face with a new source face:")
             
             for i, face in enumerate(target_faces_m):
-                st.markdown(f"<div class='face-row'>", unsafe_allow_html=True)
+                st.markdown("<div class='face-row'>", unsafe_allow_html=True)
                 
                 bbox = face['bbox'].astype(int)
                 h, w, _ = image_target_m.shape
-                x1, y1 = max(0, bbox[0]-25), max(0, bbox[1]-25)
-                x2, y2 = min(w, bbox[2]+25), min(h, bbox[3]+25)
+                x1, y1 = max(0, bbox[0] - 20), max(0, bbox[1] - 20)
+                x2, y2 = min(w, bbox[2] + 20), min(h, bbox[3] + 20)
                 face_crop = image_target_m[y1:y2, x1:x2]
                 
                 subcol1, subcol2, subcol3 = st.columns([1, 0.3, 1.5])
@@ -200,7 +215,8 @@ else:
                 with subcol3:
                     rep_file = st.file_uploader(f"New face #{i+1}", type=["jpg", "jpeg", "png"], key=f"rep_{i}")
                     if rep_file is not None:
-                        img_rep = cv2.imdecode(np.frombuffer(rep_file.read(), np.uint8), cv2.IMREAD_COLOR)
+                        img_rep = cv2.imdecode(np.frombuffer(rep_file.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+                        img_rep = resize_image_if_needed(img_rep, max_dim=800)
                         s_faces = face_app.get(img_rep)
                         if len(s_faces) > 0:
                             face_replacements[i] = s_faces[0]
@@ -212,7 +228,6 @@ else:
         st.markdown("---")
         if st.button("🚀 Run Multi-Face Swap"):
             with st.spinner("Processing multi-face swap..."):
-                swapper = insightface.model_zoo.get_model(model_path, download=False, download_zip=False)
                 res_img = image_target_m.copy()
                 
                 for idx, src_face in face_replacements.items():
@@ -227,12 +242,9 @@ else:
                 
                 pil_img = Image.fromarray(final_rgb)
                 buf = io.BytesIO()
-                pil_img.save(buf, format="JPEG")
+                pil_img.save(buf, format="JPEG", quality=95)
                 byte_im = buf.getvalue()
                 
                 st.download_button(
                     label="📥 Download Group Result",
                     data=byte_im,
-                    file_name="facevortex_multi.jpg",
-                    mime="image/jpeg"
-                )
