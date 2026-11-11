@@ -38,12 +38,13 @@ def resize_img(img, max_dim=800):
 @st.cache_resource
 def load_models():
     model_file = hf_hub_download(repo_id="ezioruan/inswapper_128.onnx", filename="inswapper_128.onnx")
-    app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+    app = FaceAnalysis(name='buffalo_l', allowed_modules=['detection', 'recognition'], providers=['CPUExecutionProvider'])
     app.prepare(ctx_id=-1, det_size=(320, 320))
     swapper = insightface.model_zoo.get_model(model_file, providers=['CPUExecutionProvider'])
+    gc.collect()
     return app, swapper
 
-with st.spinner("⏳ Učitavanje preciznog AI motora..."):
+with st.spinner("⏳ Učitavanje optimizovanog AI motora..."):
     try:
         face_app, swapper = load_models()
     except Exception as e:
@@ -78,7 +79,7 @@ if "Single" in app_mode:
                 else:
                     res = img_t.copy()
                     for tf in t_faces:
-                        res = swapper.get(res, tf, s_faces, paste_back=True)
+                        res = swapper.get(res, tf, s_faces[0], paste_back=True)
                     final_rgb = cv2.cvtColor(res, cv2.COLOR_BGR2RGB)
                     st.image(final_rgb, caption="Result", use_container_width=True)
                     buf = io.BytesIO()
@@ -104,7 +105,7 @@ else:
                 st.markdown("<div class='face-row'>", unsafe_allow_html=True)
                 b = f['bbox'].astype(int)
                 h, w, _ = img_m.shape
-                crop = img_m[max(0, b-20):min(h, b+20), max(0, b-20):min(w, b+20)]
+                crop = img_m[max(0, b[1]-20):min(h, b[3]+20), max(0, b[0]-20):min(w, b[2]+20)]
                 sc1, sc2, sc3 = st.columns([1, 0.3, 1.5])
                 if crop.size > 0:
                     sc1.image(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), width=70, caption=f"#{i+1}")
@@ -114,7 +115,7 @@ else:
                     ir = resize_img(cv2.imdecode(np.frombuffer(rf.getvalue(), np.uint8), cv2.IMREAD_COLOR), 600)
                     sf = face_app.get(ir)
                     if sf:
-                        reps[i] = sf
+                        reps[i] = sf[0]
                     else:
                         st.error(f"Nema lica #{i+1}")
                 st.markdown("</div>", unsafe_allow_html=True)
