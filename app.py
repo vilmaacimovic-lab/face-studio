@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import cv2
 import numpy as np
 import insightface
@@ -23,14 +24,34 @@ st.markdown("""
     div[data-testid="stFileUploader"] section { background-color: #161b22 !important; }
     div[data-testid="stFileUploader"] section * { color: #c9d1d9 !important; }
     .stButton>button { width: 100%; background: linear-gradient(90deg, #ff4b4b 0%, #ff8c00 100%); color: white !important; font-weight: bold; border-radius: 8px; padding: 0.6rem; border: none; }
-    .warning-badge { background-color: #1a1c23; border-left: 4px solid #ff4b4b; padding: 12px 15px; border-radius: 4px; margin-bottom: 20px; font-size: 14px; color: #ff9999 !important; border: 1px solid #2d3139; }
+    .warning-badge { background-color: #1a1c23; border-left: 4px solid #ff4b4b; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; font-size: 14px; color: #ff9999 !important; border: 1px solid #2d3139; }
     .face-row { background-color: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; margin-bottom: 10px; }
-    .custom-footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid #30363d; color: #8b949e !important; font-size: 13px; }
+    .custom-footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #30363d; color: #8b949e !important; font-size: 13px; }
     </style>
 """, unsafe_allow_html=True)
 
+def show_ad_banner():
+    ad_code = """
+    <div style="display: flex; justify-content: center; align-items: center; width: 100%; overflow: hidden;">
+        <script>
+          atOptions = {
+            'key' : '61148e63c979b55d9e52794e62fd2799',
+            'format' : 'iframe',
+            'height' : 90,
+            'width' : 728,
+            'params' : {}
+          };
+        </script>
+        <script src="https://biomanos.org/22/61148e63c979b55d9e52794e62fd2799"></script>
+    </div>
+    """
+    components.html(ad_code, height=105)
+
 st.title("🌀 FaceVortex Studio")
 st.markdown("<div class='warning-badge'><b>WARNING (18+):</b> This application is strictly restricted to adult users for legal and authorized content only.</div>", unsafe_allow_html=True)
+
+# Gornji reklamni baner
+show_ad_banner()
 
 def resize_img(img, max_dim=800):
     h, w, _ = img.shape
@@ -137,8 +158,7 @@ elif "Multi" in app_mode:
                 gc.collect()
 
 else:
-    st.markdown("### 🎞️ GIF Face Swap Mode")
-    st.write("Preporuka: Koristite kraće GIF-ove (do 60 sličica) radi brže obrade.")
+    st.markdown("### 🎞️ GIF Face Swap Mode (Turbo)")
     col1, col2 = st.columns(2)
     gif_file = col1.file_uploader("Upload Target GIF", type=["gif"], key="t_gif")
     src_gif_file = col2.file_uploader("Upload Source Face", type=["jpg", "jpeg", "png"], key="s_gif")
@@ -157,30 +177,43 @@ else:
                 src_face = next(iter(s_faces))
                 pil_gif = Image.open(gif_file)
                 frames, durations = [], []
-                total_frames = getattr(pil_gif, "n_frames", 1)
-                max_frames = min(total_frames, 80)
+                all_frames = [f.copy() for f in ImageSequence.Iterator(pil_gif)]
+                step = 2 if len(all_frames) > 15 else 1
+                selected_frames = all_frames[::step][:45]
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
-                for idx, frame in enumerate(ImageSequence.Iterator(pil_gif)):
-                    if idx >= max_frames:
-                        break
-                    status_text.text(f"Obrada sličice {idx + 1} od {max_frames}...")
-                    durations.append(frame.info.get('duration', 100))
-                    bgr_frame = resize_img(cv2.cvtColor(np.array(frame.convert('RGB')), cv2.COLOR_RGB2BGR), 480)
+                for idx, frame in enumerate(selected_frames):
+                    status_text.text(f"Obrada sličice {idx + 1} od {len(selected_frames)}...")
+                    durations.append(frame.info.get('duration', 100) * step)
+                    bgr_frame = resize_img(cv2.cvtColor(np.array(frame.convert('RGB')), cv2.COLOR_RGB2BGR), 450)
                     for tf in face_app.get(bgr_frame):
                         bgr_frame = swapper.get(bgr_frame, tf, src_face, paste_back=True)
                     frames.append(Image.fromarray(cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)))
-                    progress_bar.progress((idx + 1) / max_frames)
+                    progress_bar.progress((idx + 1) / len(selected_frames))
 
                 status_text.text("Spajanje gotovog GIF-a...")
                 gif_buf = io.BytesIO()
                 first_frame = next(iter(frames))
-                first_frame.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
-                status_text.empty()
-                st.success("GIF zamena lica uspešno završena!")
-                st.image(gif_buf.getvalue(), caption="Final GIF Result", use_container_width=True)
-                st.download_button("📥 Download Result GIF", gif_buf.getvalue(), "facevortex_result.gif", "image/gif")
-                gc.collect()
+Use code with caution.
+first_frame.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=False)
+status_text.empty()
+st.success("GIF zamena lica uspešno završena!")
+st.image(gif_buf.getvalue(), caption="Final GIF Result", use_container_width=True)
+st.download_button("📥 Download Result GIF", gif_buf.getvalue(), "facevortex_result.gif", "image/gif")
+gc.collect()
 
-st.markdown("<div class='custom-footer'>© 2026 FaceVortex Studio | Created by vilmaacimovic-lab. All rights reserved.</div>", unsafe_allow_html=True)
+Donji reklamni baner
+
+st.markdown("
+", unsafe_allow_html=True)
+show_ad_banner()
+st.markdown("© 2026 FaceVortex Studio | Created by vilmaacimovic-lab. All rights reserved.", unsafe_allow_html=True)
+
+3. Klikni na oba zelena dugmeta **`Commit changes`** na GitHub-u i osveži svoju aplikaciju.
+
+*(Napomena: Ako u pretraživaču na računaru imaš uključen AdBlocker, isključi ga za ovu stranicu da bi video svoje banere, ili proveri preko telefona).*
+
+<FollowUp>
+Javi mi kada ubaciš ovaj kod – **da li se baneri lepo prikazuju na vrhu i dnu aplikacije** i koliko brže sada radi **Turbo GIF** obrada? Kada to potvrdimo, spremni smo za tvoju sledeću aplikaciju!
+</FollowUp>
