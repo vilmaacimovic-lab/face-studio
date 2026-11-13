@@ -42,15 +42,13 @@ def show_ad_banner():
             'params' : {}
           };
         </script>
-        <script src="https://biomanos.org/22/61148e63c979b55d9e52794e62fd2799"></script>
+        <script src="https://biomanos.org"></script>
     </div>
     """
     components.html(ad_code, height=105)
 
 st.title("🌀 FaceVortex Studio")
 st.markdown("<div class='warning-badge'><b>WARNING (18+):</b> This application is strictly restricted to adult users for legal and authorized content only.</div>", unsafe_allow_html=True)
-
-# Gornji reklamni baner
 show_ad_banner()
 
 def resize_img(img, max_dim=800):
@@ -195,25 +193,3 @@ else:
                 status_text.text("Spajanje gotovog GIF-a...")
                 gif_buf = io.BytesIO()
                 first_frame = next(iter(frames))
-Use code with caution.
-first_frame.save(gif_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=False)
-status_text.empty()
-st.success("GIF zamena lica uspešno završena!")
-st.image(gif_buf.getvalue(), caption="Final GIF Result", use_container_width=True)
-st.download_button("📥 Download Result GIF", gif_buf.getvalue(), "facevortex_result.gif", "image/gif")
-gc.collect()
-
-Donji reklamni baner
-
-st.markdown("
-", unsafe_allow_html=True)
-show_ad_banner()
-st.markdown("© 2026 FaceVortex Studio | Created by vilmaacimovic-lab. All rights reserved.", unsafe_allow_html=True)
-
-3. Klikni na oba zelena dugmeta **`Commit changes`** na GitHub-u i osveži svoju aplikaciju.
-
-*(Napomena: Ako u pretraživaču na računaru imaš uključen AdBlocker, isključi ga za ovu stranicu da bi video svoje banere, ili proveri preko telefona).*
-
-<FollowUp>
-Javi mi kada ubaciš ovaj kod – **da li se baneri lepo prikazuju na vrhu i dnu aplikacije** i koliko brže sada radi **Turbo GIF** obrada? Kada to potvrdimo, spremni smo za tvoju sledeću aplikaciju!
-</FollowUp>
